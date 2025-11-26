@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "409177462900",
+    "project_id": "rentsoed-app",
+    "storage_bucket": "rentsoed-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:409177462900:android:a5621be89840082cf71921",
+        "android_client_info": {
+          "package_name": "com.example.rentsoed_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLl3be7IdtSKf8X0kA7C_eeRiV_BAQaKs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
