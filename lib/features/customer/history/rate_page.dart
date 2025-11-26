@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:gap/gap.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart'; // ✅ Import yang benar
+import 'package:flutter_rating_bar/flutter_rating_bar.dart'; 
 
 class RatePage extends StatefulWidget {
   final Map<String, dynamic> bookingData;
@@ -24,6 +24,15 @@ class _RatePageState extends State<RatePage> {
     super.dispose();
   }
 
+  // Helper untuk mendapatkan teks rating yang lebih detail
+  String _getRatingText(double rating) {
+    if (rating == 5) return "Sempurna!";
+    if (rating >= 4) return "Sangat Bagus"; 
+    if (rating == 3) return "Cukup Bagus"; 
+    if (rating == 2) return "Kurang Memuaskan"; 
+    return "Tidak Memuaskan"; // 1 Bintang
+  }
+
   Future<void> _submitReview() async {
     // Validasi input sederhana
     if (_commentController.text.trim().isEmpty) {
@@ -42,26 +51,24 @@ class _RatePageState extends State<RatePage> {
       if (user == null) throw Exception("User tidak terautentikasi.");
 
       // 1. Cek apakah user sudah pernah kasih review untuk booking ID ini
-      // (Mencegah duplikasi review)
       final existingReview = await supabase
           .from('reviews')
           .select('id')
           .eq('booking_id', widget.bookingData['id'])
-          .maybeSingle(); // Gunakan maybeSingle() untuk return null jika data tidak ada
+          .maybeSingle(); 
 
       if (existingReview != null) {
         throw Exception("Anda sudah memberi ulasan untuk pesanan ini.");
       }
 
-      // 2. Kirim ulasan ke tabel 'reviews'
+      // 2. Kirim ulasan ke tabel 'reviews' (Perlu RLS INSERT yang benar)
       await supabase.from('reviews').insert({
         'booking_id': widget.bookingData['id'],
         'user_id': user.id,
-        'motor_id': widget.bookingData['motor_id'],
+        // Asumsi motor_id ada di bookingData, sesuai skema yang dibutuhkan
+        'motor_id': widget.bookingData['motor_id'], 
         'rating': _rating.toInt(),
         'comment': _commentController.text.trim(),
-        // created_at akan otomatis diisi oleh default value database (now()), 
-        // tapi mengirimnya manual juga tidak masalah.
       });
 
       if (mounted) {
@@ -72,8 +79,13 @@ class _RatePageState extends State<RatePage> {
       }
     } catch (e) {
       if (mounted) {
+        // Menampilkan pesan error yang spesifik jika ada RLS violation
+        String errorMessage = e.toString().contains('row violates row-level security policy') 
+            ? "Gagal mengirim: Izin (RLS) database ditolak. Hubungi Admin."
+            : "Gagal mengirim ulasan: ${e.toString()}";
+            
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal mengirim ulasan: ${e.toString()}"), backgroundColor: Colors.red),
+          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -142,9 +154,7 @@ class _RatePageState extends State<RatePage> {
                   ),
                   const Gap(10),
                   Text(
-                    _rating == 5 ? "Sempurna!" : 
-                    _rating >= 4 ? "Sangat Bagus" : 
-                    _rating >= 3 ? "Cukup Bagus" : "Kurang Memuaskan",
+                    _getRatingText(_rating), // Menggunakan fungsi helper baru
                     style: GoogleFonts.poppins(color: const Color(0xFFD4AF37), fontWeight: FontWeight.bold)
                   ),
                 ],

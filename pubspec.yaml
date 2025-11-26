@@ -28,6 +28,10 @@ dependencies:
   
   supabase_flutter: ^2.8.3
   image_picker: ^1.1.2
+  
+  # --- FIX KONFLIK: Versi postgrest dinaikkan ke ^2.5.0 ---
+  # Ini mengatasi error karena versi lama postgrest bentrok dengan dependensi supabase
+  postgrest: ^2.5.0 
 
 dev_dependencies:
   build_runner: ^2.4.7 
