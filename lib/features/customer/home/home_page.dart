@@ -1,16 +1,17 @@
+import 'dart:async'; // Tambahkan ini untuk Timer
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:rentsoed_app/features/customer/detail/detail_page.dart';
 import 'package:rentsoed_app/models/motor_model.dart';
-import 'package:rentsoed_app/models/category_model.dart'; 
-import 'package:rentsoed_app/widgets/custom_drawer.dart'; 
-import 'package:rentsoed_app/features/customer/inbox/inbox_page.dart'; // Import Inbox Page
+import 'package:rentsoed_app/models/category_model.dart';
+import 'package:rentsoed_app/widgets/custom_drawer.dart';
+import 'package:rentsoed_app/features/customer/inbox/inbox_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,345 +21,729 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // Simpan hasil fetch kategori dan motor
-  late Future<List<CategoryModel>> _categoriesFuture;
-  late Future<List<MotorModel>> _motorsFuture;
-  
-  String _selectedCategoryId = 'all'; 
+  // --- STATE VARIABLES ---
+  String _selectedCategoryId = 'all';
+  String _searchQuery = '';
+
+  // --- CAROUSEL VARIABLES ---
+  final PageController _pageController = PageController();
+  int _currentPromoIndex = 0;
+  Timer? _carouselTimer;
+
+  // --- STREAMS ---
+  late final Stream<List<Map<String, dynamic>>> _categoriesStream;
+  late final Stream<List<Map<String, dynamic>>> _motorsStream;
+  late final Stream<List<Map<String, dynamic>>>
+  _promosStream; // Stream Promo Baru
+
+  // --- THEME COLORS ---
+  final Color gold = const Color(0xFFD4AF37);
+  final Color navy = const Color(0xFF0F172A);
+  final Color cardColor = const Color(0xFF1E293B);
 
   @override
   void initState() {
     super.initState();
-    _categoriesFuture = _fetchCategories();
-    _motorsFuture = _fetchMotors();
-  }
 
-  // --- FUNGSI 1: AMBIL DATA KATEGORI DARI SUPABASE ---
-  Future<List<CategoryModel>> _fetchCategories() async {
-    final supabase = Supabase.instance.client;
-    
-    final response = await supabase
+    // 1. STREAM KATEGORI
+    _categoriesStream = Supabase.instance.client
         .from('categories')
-        .select('*')
-        .order('nama_kategori', ascending: true);
-    
-    List<CategoryModel> categories = [];
-    
-    for (var json in response) {
-      try {
-        categories.add(CategoryModel.fromJson(json as Map<String, dynamic>));
-      } catch (e) {
-        debugPrint('Skipping category row due to parsing error: $e');
-      }
-    }
-    
-    // Tambahkan kategori 'All' secara manual di awal untuk filter
-    categories.insert(0, CategoryModel(id: 'all', namaKategori: 'All'));
-    
-    return categories;
-  }
+        .stream(primaryKey: ['id'])
+        .map((rows) {
+          final list = rows.map((e) => Map<String, dynamic>.from(e)).toList();
+          list.sort(
+            (a, b) => a['nama_kategori'].toString().toLowerCase().compareTo(
+              b['nama_kategori'].toString().toLowerCase(),
+            ),
+          );
+          final hasAll = list.any((e) => e['id'] == 'all');
+          if (!hasAll) {
+            list.insert(0, {'id': 'all', 'nama_kategori': 'All'});
+          }
+          return list;
+        });
 
-  // --- FUNGSI 2: AMBIL DATA MOTOR DARI SUPABASE ---
-  Future<List<MotorModel>> _fetchMotors() async {
-    final supabase = Supabase.instance.client;
-    
-    var query = supabase
+    // 2. STREAM MOTOR
+    _motorsStream = Supabase.instance.client
         .from('motors')
-        .select('*')
-        .eq('is_available', true);
+        .stream(primaryKey: ['id'])
+        .map((rows) {
+          final list = rows.map((e) => Map<String, dynamic>.from(e)).toList();
+          return list.where((m) {
+            return m['is_available'] == true ||
+                m['is_available'].toString() == 'true';
+          }).toList();
+        });
 
-    if (_selectedCategoryId != 'all') {
-      query = query.eq('category_id', _selectedCategoryId);
-    }
-
-    final response = await query.order('nama_motor', ascending: true);
-
-    final List<MotorModel> motors = response
-        .map((json) => MotorModel.fromJson(json as Map<String, dynamic>))
-        .toList();
-
-    return motors;
-  }
-
-  // --- HELPER DAN UTILITY ---
-
-  String formatRupiah(int number) {
-    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(number);
-  }
-
-  // Fungsi untuk mendapatkan Nama Kategori dari ID (Optimized)
-  String _getCategoryNameById(String categoryId, List<CategoryModel> categories) {
-    try {
-      final category = categories.firstWhere(
-        (cat) => cat.id == categoryId, 
-        orElse: () => CategoryModel(id: '', namaKategori: 'Lain-lain')
-      );
-      return category.namaKategori.isEmpty ? 'Lain-lain' : category.namaKategori;
-
-    } catch (e) {
-      return 'Unlisted';
-    }
-  }
-
-  // Fungsi untuk refresh data motor saat filter diganti
-  void _onCategorySelected(String categoryId) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-      _motorsFuture = _fetchMotors(); 
-    });
-  }
-  
-  // Fungsi untuk navigasi ke Inbox Page
-  void _navigateToInbox() {
-    Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (context) => const InboxPage())
-    );
+    // 3. STREAM PROMO (BARU)
+    _promosStream = Supabase.instance.client
+        .from('promos')
+        .stream(primaryKey: ['id'])
+        .order('id'); // Anda bisa ganti order created_at jika ada
   }
 
   @override
+  void dispose() {
+    _pageController.dispose();
+    _carouselTimer?.cancel(); // Hentikan timer saat keluar halaman
+    super.dispose();
+  }
+
+  // --- LOGIC AUTO PLAY CAROUSEL ---
+  void _startAutoPlay(int itemCount) {
+    _carouselTimer?.cancel(); // Reset timer lama jika ada
+    if (itemCount > 1) {
+      _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (_pageController.hasClients) {
+          int nextPage = _pageController.page!.toInt() + 1;
+          if (nextPage >= itemCount) {
+            nextPage = 0; // Loop kembali ke awal
+          }
+          _pageController.animateToPage(
+            nextPage,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      });
+    }
+  }
+
+  // --- HELPER FUNCTIONS ---
+
+  String formatRupiah(int number) {
+    return NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp ',
+      decimalDigits: 0,
+    ).format(number);
+  }
+
+  List<CategoryModel> _toCategoryModels(List<Map<String, dynamic>> rows) {
+    return rows.map((r) {
+      try {
+        return CategoryModel.fromJson(r);
+      } catch (_) {
+        return CategoryModel(
+          id: r['id'].toString(),
+          namaKategori: r['nama_kategori']?.toString() ?? 'Unknown',
+        );
+      }
+    }).toList();
+  }
+
+  List<MotorModel> _toMotorModels(List<Map<String, dynamic>> rows) {
+    return rows.map((r) {
+      try {
+        return MotorModel.fromJson(r);
+      } catch (_) {
+        return MotorModel(
+          id: r['id']?.toString() ?? '',
+          namaMotor: r['nama_motor']?.toString() ?? '',
+          harga: int.tryParse(r['harga']?.toString() ?? '0') ?? 0,
+          categoryId: r['category_id']?.toString() ?? '',
+          fotoMotor: r['foto_motor']?.toString(),
+        );
+      }
+    }).toList();
+  }
+
+  // --- EVENT HANDLERS ---
+
+  void _onCategorySelected(String categoryId) {
+    setState(() {
+      _selectedCategoryId = categoryId;
+    });
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+    });
+  }
+
+  void _navigateToInbox() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const InboxPage()),
+    );
+  }
+
+  // --- BUILD METHOD ---
+
+  @override
   Widget build(BuildContext context) {
-    final userName = Supabase.instance.client.auth.currentUser?.userMetadata?['full_name'] ?? 'Pelanggan';
+    final userName =
+        Supabase.instance.client.auth.currentUser?.userMetadata?['full_name'] ??
+        'Pelanggan';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      
+      backgroundColor: navy,
       drawer: const CustomDrawer(),
-      
       appBar: AppBar(
-        automaticallyImplyLeading: true, 
+        automaticallyImplyLeading: true,
         iconTheme: const IconThemeData(color: Colors.white),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        
         title: Text(
           "RENTSOED",
           style: GoogleFonts.playfairDisplay(
-            fontSize: 24, 
-            fontWeight: FontWeight.bold, 
-            color: const Color(0xFFD4AF37),
-            letterSpacing: 1.5,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: gold,
           ),
         ),
-        
         actions: [
-          // Tombol Notifikasi (Lonceng)
           IconButton(
-            onPressed: _navigateToInbox, 
-            icon: const Icon(Icons.notifications_none, color: Colors.white54)
+            onPressed: _navigateToInbox,
+            icon: const Icon(Icons.notifications_none, color: Colors.white54),
           ),
-          const Gap(10),
+          const Gap(8),
         ],
       ),
-
       body: Padding(
-        padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 0),
-        child: FutureBuilder<List<CategoryModel>>( 
-          future: _categoriesFuture,
-          builder: (context, snapshotCategories) { 
-            if (snapshotCategories.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
-            }
-            if (snapshotCategories.hasError || !snapshotCategories.hasData) {
-              return Center(child: Text("Gagal memuat kategori: ${snapshotCategories.error.toString()}", style: GoogleFonts.poppins(color: Colors.red)));
-            }
-            
-            final categories = snapshotCategories.data!;
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // HEADER WELCOME
+            Text(
+              "Welcome Back,",
+              style: GoogleFonts.poppins(color: Colors.white54, fontSize: 14),
+            ),
+            Text(
+              userName,
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const Gap(14),
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- WELCOME HEADER ---
-                Text("Welcome Back, ", style: GoogleFonts.poppins(color: Colors.white54, fontSize: 16)),
-                Text(userName, style: GoogleFonts.playfairDisplay(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                const Gap(20),
+            // PROMO CAROUSEL (DARI SUPABASE)
+            _buildPromoCarouselStream(),
+            const Gap(16),
 
+            // SEARCH BAR
+            _buildSearchBar(),
+            const Gap(16),
 
-                // --- SEARCH BAR MEWAH ---
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08), 
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.15)),
-                  ),
-                  child: const TextField(
-                    style: TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      icon: Icon(Icons.search, color: Color(0xFFD4AF37)),
-                      hintText: "Cari motor impian Anda...",
-                      hintStyle: TextStyle(color: Colors.white38),
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ).animate().fadeIn(duration: 500.ms),
-                const Gap(20),
-
-                // --- KATEGORI CHIPS ---
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: categories.map((category) {
-                      final isSelected = _selectedCategoryId == category.id;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: GestureDetector(
-                          onTap: () => _onCategorySelected(category.id),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFFD4AF37) : Colors.white.withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
-                                color: isSelected ? const Color(0xFFD4AF37) : Colors.white.withOpacity(0.1),
-                              ),
-                            ),
-                            child: Text(
-                              category.namaKategori, 
-                              style: GoogleFonts.poppins(
-                                color: isSelected ? const Color(0xFF0F172A) : Colors.white,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                        ),
+            // CATEGORY LIST
+            SizedBox(
+              height: 50,
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _categoriesStream,
+                builder: (context, snapCat) {
+                  if (snapCat.connectionState == ConnectionState.waiting) {
+                    return _buildCategoryShimmer();
+                  }
+                  final categories = _toCategoryModels(snapCat.data ?? []);
+                  return ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categories.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, i) {
+                      return _buildCategoryChip(
+                        categories[i],
+                        _selectedCategoryId == categories[i].id,
                       );
-                    }).toList(),
-                  ),
-                ).animate().slideX(duration: 600.ms, begin: 0.2),
+                    },
+                  );
+                },
+              ),
+            ),
 
+            const Gap(16),
 
-                const Gap(20),
+            // MOTORS GRID
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _motorsStream,
+                builder: (context, snapMotors) {
+                  if (snapMotors.connectionState == ConnectionState.waiting)
+                    return _buildLoadingGrid();
+                  if (snapMotors.hasError)
+                    return Center(
+                      child: Text(
+                        "Error memuat data",
+                        style: GoogleFonts.poppins(color: Colors.red),
+                      ),
+                    );
 
-                // --- LIST GRID MOTOR (FutureBuilder Motor) ---
-                Expanded(
-                  child: FutureBuilder<List<MotorModel>>(
-                    future: _motorsFuture,
-                    builder: (context, snapshotMotor) {
-                      if (snapshotMotor.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
-                      }
-                      if (snapshotMotor.hasError) {
-                        return Center(child: Text("Gagal memuat motor: ${snapshotMotor.error}", style: const TextStyle(color: Colors.red)));
-                      }
-                      
-                      final motors = snapshotMotor.data!;
-                      
-                      if (motors.isEmpty) {
-                        return Center(
-                          child: Text("Motor tidak ditemukan untuk kategori ini.", style: GoogleFonts.poppins(color: Colors.white54)),
-                        );
-                      }
+                  final rawData = snapMotors.data ?? [];
+                  final allMotors = _toMotorModels(rawData);
 
-                      return GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2, 
-                          childAspectRatio: 0.65, 
+                  final filteredMotors = allMotors.where((motor) {
+                    final matchCategory =
+                        _selectedCategoryId == 'all' ||
+                        motor.categoryId == _selectedCategoryId;
+                    final matchSearch = motor.namaMotor.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    );
+                    return matchCategory && matchSearch;
+                  }).toList();
+
+                  filteredMotors.sort(
+                    (a, b) => a.namaMotor.compareTo(b.namaMotor),
+                  );
+
+                  if (filteredMotors.isEmpty) return _buildEmptyState();
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.65,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
                         ),
-                        itemCount: motors.length,
-                        itemBuilder: (context, index) {
-                          final motor = motors[index];
-                          return _buildMotorCard(motor, index, categories); 
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          },
+                    itemCount: filteredMotors.length,
+                    itemBuilder: (context, index) =>
+                        _buildMotorCard(filteredMotors[index], index),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // WIDGET KARTU MOTOR BARU (Desain Lebih Mewah)
-  Widget _buildMotorCard(MotorModel motor, int index, List<CategoryModel> categories) {
-    final categoryName = _getCategoryNameById(motor.categoryId, categories);
-    final safeImageUrl = motor.fotoMotor ?? ''; 
+  // --- WIDGET PROMO CAROUSEL ---
 
+  Widget _buildPromoCarouselStream() {
+    return SizedBox(
+      height: 140, // Tinggi banner
+      width: double.infinity,
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _promosStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            // Shimmer loading banner
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ).animate().shimmer(duration: 1000.ms);
+          }
+
+          final promos = snapshot.data ?? [];
+
+          if (promos.isEmpty) {
+            // Jika tidak ada promo, tampilkan banner default statis
+            return _buildDefaultPromoBanner();
+          }
+
+          // Mulai Auto Play jika data sudah masuk
+          // Menggunakan addPostFrameCallback agar tidak error setState saat build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_carouselTimer == null || !_carouselTimer!.isActive) {
+              _startAutoPlay(promos.length);
+            }
+          });
+
+          return Stack(
+            children: [
+              PageView.builder(
+                controller: _pageController,
+                itemCount: promos.length,
+                onPageChanged: (index) {
+                  setState(() => _currentPromoIndex = index);
+                },
+                itemBuilder: (context, index) {
+                  return _buildPromoCard(promos[index]);
+                },
+              ),
+              // Indikator Titik (Dots)
+              if (promos.length > 1)
+                Positioned(
+                  bottom: 12,
+                  left: 16,
+                  child: Row(
+                    children: List.generate(promos.length, (index) {
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        margin: const EdgeInsets.only(right: 6),
+                        height: 6,
+                        width: _currentPromoIndex == index ? 24 : 6,
+                        decoration: BoxDecoration(
+                          color: _currentPromoIndex == index
+                              ? gold
+                              : Colors.white24,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    ).animate().fadeIn(duration: 600.ms);
+  }
+
+  // Kartu Promo Individual (Data dari Supabase)
+  Widget _buildPromoCard(Map<String, dynamic> promo) {
+    // Ambil data dari tabel
+    final code = promo['code'] ?? '';
+    final description = promo['description'] ?? '';
+    final discountType = promo['discount_type'] ?? 'fixed';
+    final discountValue = promo['discount_value'] ?? 0;
+
+    // Format Text Diskon
+    String discountText = '';
+    if (discountType == 'percentage') {
+      discountText = "$discountValue%";
+    } else {
+      discountText = formatRupiah(discountValue); // e.g. Rp 10.000
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: 0,
+      ), // Full width atau tambah margin jika perlu
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          // Gradient sedikit berbeda biar mewah
+          colors: [gold.withOpacity(0.25), const Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 7,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: gold,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    code, // Kode Promo
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: navy,
+                    ),
+                  ),
+                ),
+                const Gap(8),
+                Text(
+                  description, // Deskripsi
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Gap(4),
+                Text(
+                  "Hemat hingga $discountText", // Nilai Diskon
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                ),
+                child: Icon(
+                  discountType == 'percentage'
+                      ? Icons.percent
+                      : Icons.attach_money,
+                  size: 40,
+                  color: gold.withOpacity(0.90),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fallback jika tidak ada promo
+  Widget _buildDefaultPromoBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white10,
+        border: Border.all(color: Colors.white.withOpacity(0.04)),
+      ),
+      child: Center(
+        child: Text(
+          "Belum ada promo saat ini.",
+          style: GoogleFonts.poppins(color: Colors.white54),
+        ),
+      ),
+    );
+  }
+
+  // --- COMPONENT LAINNYA (TETAP SAMA SEPERTI SEBELUMNYA) ---
+
+  Widget _buildCategoryChip(CategoryModel category, bool isSelected) {
+    return GestureDetector(
+      onTap: () => _onCategorySelected(category.id),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [gold.withOpacity(0.95), const Color(0xFFC49B2A)],
+                )
+              : null,
+          color: isSelected ? null : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: isSelected ? gold : Colors.white.withOpacity(0.06),
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: gold.withOpacity(0.18),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [],
+        ),
+        child: Center(
+          child: Text(
+            category.namaKategori,
+            style: GoogleFonts.poppins(
+              color: isSelected ? navy : Colors.white,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search, color: Color(0xFFD4AF37)),
+          const Gap(12),
+          Expanded(
+            child: TextField(
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration.collapsed(
+                hintText: "Cari motor impian Anda...",
+                hintStyle: TextStyle(color: Colors.white38),
+              ),
+              onChanged: _onSearchChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMotorCard(MotorModel motor, int index) {
+    final safeImageUrl = motor.fotoMotor ?? '';
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DetailPage(motor: motor),
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            pageBuilder: (_, anim, __) => FadeTransition(
+              opacity: anim,
+              child: DetailPage(motor: motor),
+            ),
           ),
         );
       },
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B), // Card Color
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.08)), 
+          color: cardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.04)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.45),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. GAMBAR (Paling Menonjol)
             Expanded(
               flex: 3,
-              child: Hero( 
-                tag: motor.namaMotor, 
+              child: Hero(
+                tag: motor.id + (motor.namaMotor ?? ''),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.02),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white10,
                   ),
-                  child: safeImageUrl.startsWith('http')
-                    ? CachedNetworkImage(
-                        imageUrl: safeImageUrl,
-                        fit: BoxFit.contain, 
-                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37), strokeWidth: 2)),
-                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.motorcycle, color: Colors.white24, size: 50)),
-                      )
-                    : const Center(child: Icon(Icons.motorcycle, size: 70, color: Colors.white24)),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: safeImageUrl.startsWith('http')
+                        ? CachedNetworkImage(
+                            imageUrl: safeImageUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFD4AF37),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => const Center(
+                              child: Icon(
+                                Icons.motorcycle,
+                                color: Colors.white24,
+                                size: 48,
+                              ),
+                            ),
+                          )
+                        : const Center(
+                            child: Icon(
+                              Icons.motorcycle,
+                              size: 56,
+                              color: Colors.white24,
+                            ),
+                          ),
+                  ),
                 ),
               ),
             ),
-            
             const Gap(12),
-            
-            // 2. TEKS INFO
             Text(
-              categoryName.toUpperCase(), 
-              style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.white54),
+              "TERSEDIA",
+              style: GoogleFonts.poppins(
+                fontSize: 9,
+                color: Colors.white54,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const Gap(4),
-
-            // Nama Motor
             Text(
-              motor.namaMotor, 
+              motor.namaMotor,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const Gap(10),
-            
-            // Harga
             Row(
               children: [
                 Text(
-                  formatRupiah(motor.harga), 
-                  style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFFD4AF37)),
+                  formatRupiah(motor.harga),
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    color: gold,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                const Gap(4),
                 Text(
-                  " /hari", 
-                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.white54),
+                  '/hari',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.white54,
+                  ),
                 ),
               ],
             ),
           ],
         ),
-      ).animate().fadeIn(delay: (100 * index).ms).slideY(begin: 0.2, end: 0),
+      ).animate().fadeIn(delay: (50 * index).ms).slideY(begin: 0.1, end: 0),
+    );
+  }
+
+  Widget _buildLoadingGrid() {
+    return GridView.builder(
+      itemCount: 6,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.65,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemBuilder: (_, __) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(18),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryShimmer() {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: 4,
+      separatorBuilder: (_, __) => const SizedBox(width: 10),
+      itemBuilder: (_, __) => Container(
+        width: 80,
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(30),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.search_off, size: 50, color: Colors.white24),
+          const Gap(10),
+          Text(
+            "Motor tidak ditemukan.",
+            style: GoogleFonts.poppins(color: Colors.white54),
+          ),
+        ],
+      ),
     );
   }
 }

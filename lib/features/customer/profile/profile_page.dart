@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:gap/gap.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:rentsoed_app/features/auth/login_page.dart';
 import 'package:rentsoed_app/features/customer/profile/edit_profile_page.dart'; // Pastikan file ini sudah dibuat
 
@@ -16,6 +17,8 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   // Ambil user saat ini
   final user = Supabase.instance.client.auth.currentUser;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
   String? fullName;
   String? email;
 
@@ -36,8 +39,10 @@ class _ProfilePageState extends State<ProfilePage> {
   // --- FUNGSI BUKA WHATSAPP ---
   Future<void> _openWhatsApp() async {
     // Ganti nomor ini dengan nomor Admin Rental Anda (Format: 628...)
-    final Uri url = Uri.parse("https://wa.me/6281234567890?text=Halo%20Admin%20Rentsoed,%20saya%20butuh%20bantuan.");
-    
+    final Uri url = Uri.parse(
+      "https://wa.me/6281234567890?text=Halo%20Admin%20Rentsoed,%20saya%20butuh%20bantuan.",
+    );
+
     try {
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
         throw 'Could not launch $url';
@@ -45,17 +50,46 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Gagal membuka WhatsApp, pastikan aplikasi terinstall.")),
+          const SnackBar(
+            content: Text(
+              "Gagal membuka WhatsApp, pastikan aplikasi terinstall.",
+            ),
+          ),
         );
       }
     }
   }
 
-  // --- FUNGSI LOGOUT ---
+  // --- FUNGSI LOGOUT (DIPERKUAT DENGAN LOGOUT GOOGLE) ---
   Future<void> _logout() async {
+    // 1. Logout dari Sesi Google (Memaksa pemilihan akun pada login berikutnya)
+    try {
+      // Menggunakan disconnect() adalah cara paling kuat untuk memastikan persetujuan dicabut
+      // dan memaksa user memilih akun atau login ulang di masa mendatang.
+      if (await _googleSignIn.isSignedIn()) {
+        // Cek apakah sesi Google aktif
+        await _googleSignIn.disconnect();
+      }
+    } catch (e) {
+      // Abaikan error jika user login menggunakan email/password (bukan Google)
+      print(
+        "Google sign out/disconnect failed (expected if logged in via email): $e",
+      );
+    }
+
+    // 2. Logout dari Sesi Supabase
     await Supabase.instance.client.auth.signOut();
+
     if (mounted) {
-      // Hapus semua route dan kembali ke Login Page
+      // Tampilkan pesan berhasil logout
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Anda telah berhasil logout."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+
+      // 3. Hapus semua route dan kembali ke Login Page
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -67,16 +101,15 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Background Navy
+      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        // --- PERBAIKAN: TOMBOL BACK DITAMBAHKAN ---
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
-          "My Profile", 
-          style: GoogleFonts.playfairDisplay(color: const Color(0xFFD4AF37), fontWeight: FontWeight.bold)
+          "My Profile",
+          style: GoogleFonts.playfairDisplay(
+            color: const Color(0xFFD4AF37),
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
@@ -96,15 +129,23 @@ class _ProfilePageState extends State<ProfilePage> {
                   border: Border.all(color: const Color(0xFFD4AF37), width: 2),
                   color: Colors.white10,
                 ),
-                child: const Icon(Icons.person, size: 60, color: Colors.white54),
+                child: const Icon(
+                  Icons.person,
+                  size: 60,
+                  color: Colors.white54,
+                ),
               ),
             ),
             const Gap(16),
-            
+
             // --- NAMA & EMAIL ---
             Text(
               fullName ?? "User",
-              style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
             Text(
               email ?? "-",
@@ -119,20 +160,24 @@ class _ProfilePageState extends State<ProfilePage> {
               onTap: () {
                 // Navigasi ke Halaman Edit Profile
                 Navigator.push(
-                  context, 
-                  MaterialPageRoute(builder: (context) => const EditProfilePage())
-                ).then((_) => _loadUserData()); // Refresh data setelah kembali dari edit
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EditProfilePage(),
+                  ),
+                ).then(
+                  (_) => _loadUserData(),
+                ); // Refresh data setelah kembali dari edit
               },
             ),
             const Gap(16),
-            
+
             _buildMenuTile(
               icon: Icons.help_outline,
               title: "Pusat Bantuan (WhatsApp)",
               onTap: _openWhatsApp,
             ),
             const Gap(16),
-            
+
             _buildMenuTile(
               icon: Icons.info_outline,
               title: "Tentang Aplikasi",
@@ -145,20 +190,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 );
               },
             ),
-            
+
             const Gap(50),
-            
+
             // --- TOMBOL LOGOUT ---
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _logout,
                 icon: const Icon(Icons.logout, color: Colors.red),
-                label: Text("LOGOUT", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.red)),
+                label: Text(
+                  "LOGOUT",
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red.withOpacity(0.1),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   side: const BorderSide(color: Colors.red),
                 ),
               ),
@@ -170,7 +223,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // Widget Item Menu
-  Widget _buildMenuTile({required IconData icon, required String title, required VoidCallback onTap}) {
+  Widget _buildMenuTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -184,7 +241,12 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Icon(icon, color: const Color(0xFFD4AF37)),
             const Gap(16),
-            Expanded(child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontSize: 16))),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 16),
+              ),
+            ),
             const Icon(Icons.chevron_right, color: Colors.white54, size: 18),
           ],
         ),

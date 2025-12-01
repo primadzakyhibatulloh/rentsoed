@@ -20,14 +20,15 @@ class DocumentUploadPage extends StatefulWidget {
 
 class _DocumentUploadPageState extends State<DocumentUploadPage> {
   final userId = Supabase.instance.client.auth.currentUser?.id;
-  
+
   // State untuk alur dokumen
   bool _isVerified = false;
   bool _isDocumentUploaded = false;
   bool _isLoading = true;
   String _documentType = 'KTP'; // Default pilihan dokumen
   XFile? _selectedImage;
-  final TextEditingController _documentNumberController = TextEditingController();
+  final TextEditingController _documentNumberController =
+      TextEditingController();
 
   @override
   void initState() {
@@ -41,7 +42,7 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
-    
+
     try {
       final response = await Supabase.instance.client
           .from('documents')
@@ -65,8 +66,12 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
   // --- 2. PILIH GAMBAR DOKUMEN ---
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1000);
-    
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+      maxWidth: 1000,
+    );
+
     if (pickedFile != null) {
       setState(() {
         _selectedImage = pickedFile;
@@ -77,7 +82,8 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
 
   // --- 3. SUBMIT DOKUMEN KE DB & STORAGE ---
   Future<void> _submitDocument() async {
-    if (_selectedImage == null || _documentNumberController.text.trim().isEmpty) {
+    if (_selectedImage == null ||
+        _documentNumberController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Lengkapi nomor dokumen dan foto!")),
       );
@@ -89,18 +95,25 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
 
     try {
       final supabase = Supabase.instance.client;
-      final fileName = '${userId}_${_documentType}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName =
+          '${userId}_${_documentType}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       // A. Upload Foto ke Storage
       if (kIsWeb) {
         final bytes = await _selectedImage!.readAsBytes();
-        await supabase.storage.from('user_documents').uploadBinary(fileName, bytes);
+        await supabase.storage
+            .from('user_documents')
+            .uploadBinary(fileName, bytes);
       } else {
-        await supabase.storage.from('user_documents').upload(fileName, File(_selectedImage!.path));
+        await supabase.storage
+            .from('user_documents')
+            .upload(fileName, File(_selectedImage!.path));
       }
 
       // B. Ambil URL Publik
-      final imageUrl = supabase.storage.from('user_documents').getPublicUrl(fileName);
+      final imageUrl = supabase.storage
+          .from('user_documents')
+          .getPublicUrl(fileName);
 
       // C. Simpan data dokumen ke tabel 'documents'
       await supabase.from('documents').insert({
@@ -113,38 +126,40 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Dokumen berhasil di-upload. Menunggu verifikasi Admin.")),
+          const SnackBar(content: Text("Dokumen berhasil di-upload.")),
         );
-        // Lanjutkan ke halaman booking meskipun status masih 'menunggu verifikasi'
         _navigateToBookingPage();
       }
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal upload dokumen: $e"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Gagal upload dokumen: $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  
+
   // Navigasi ke halaman booking
   void _navigateToBookingPage() {
     Navigator.pushReplacement(
-      context, 
+      context,
       MaterialPageRoute(builder: (context) => BookingPage(motor: widget.motor)),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFF0F172A),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFD4AF37))),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
+        ),
       );
     }
 
@@ -157,15 +172,25 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
       // Tampilkan placeholder sebentar
       return const Scaffold(
         backgroundColor: Color(0xFF0F172A),
-        body: Center(child: Text("Dokumen terverifikasi. Memuat form booking...", style: TextStyle(color: Colors.white70))),
+        body: Center(
+          child: Text(
+            "Dokumen terverifikasi. Memuat form booking...",
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
       );
     }
-
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: Text("Verifikasi Identitas", style: GoogleFonts.playfairDisplay(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text(
+          "Verifikasi Identitas",
+          style: GoogleFonts.playfairDisplay(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         leading: const BackButton(color: Colors.white),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -175,9 +200,18 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Langkah 1/2: Upload Dokumen", style: GoogleFonts.poppins(color: const Color(0xFFD4AF37), fontSize: 16)),
+            Text(
+              "Langkah 1/2: Upload Dokumen",
+              style: GoogleFonts.poppins(
+                color: const Color(0xFFD4AF37),
+                fontSize: 16,
+              ),
+            ),
             const Gap(8),
-            Text("Mohon upload KTP/SIM yang masih berlaku untuk melanjutkan pemesanan.", style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14)),
+            Text(
+              "Mohon upload KTP/SIM yang masih berlaku untuk melanjutkan pemesanan.",
+              style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14),
+            ),
             const Gap(30),
 
             // --- PILIH JENIS DOKUMEN & NOMOR ---
@@ -186,7 +220,10 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _documentType,
@@ -194,9 +231,15 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
                         isExpanded: true,
                         style: GoogleFonts.poppins(color: Colors.white),
                         items: const ['KTP', 'SIM C', 'Paspor']
-                            .map((type) => DropdownMenuItem(value: type, child: Text(type)))
+                            .map(
+                              (type) => DropdownMenuItem(
+                                value: type,
+                                child: Text(type),
+                              ),
+                            )
                             .toList(),
-                        onChanged: (val) => setState(() => _documentType = val!),
+                        onChanged: (val) =>
+                            setState(() => _documentType = val!),
                       ),
                     ),
                   ),
@@ -213,7 +256,10 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
                       labelStyle: GoogleFonts.poppins(color: Colors.white54),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.05),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),
@@ -222,7 +268,13 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
             const Gap(30),
 
             // --- KOTAK UPLOAD FOTO ---
-            Text("Foto $_documentType", style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text(
+              "Foto $_documentType",
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const Gap(10),
             GestureDetector(
               onTap: _pickImage,
@@ -233,23 +285,38 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
                   color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _isDocumentUploaded ? const Color(0xFFD4AF37) : Colors.white24,
-                    width: 2
+                    color: _isDocumentUploaded
+                        ? const Color(0xFFD4AF37)
+                        : Colors.white24,
+                    width: 2,
                   ),
                 ),
                 child: _selectedImage != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: kIsWeb
-                            ? Image.network(_selectedImage!.path, fit: BoxFit.cover)
-                            : Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
+                            ? Image.network(
+                                _selectedImage!.path,
+                                fit: BoxFit.cover,
+                              )
+                            : Image.file(
+                                File(_selectedImage!.path),
+                                fit: BoxFit.cover,
+                              ),
                       )
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.photo_camera, size: 50, color: Colors.white.withOpacity(0.5)),
+                          Icon(
+                            Icons.photo_camera,
+                            size: 50,
+                            color: Colors.white.withOpacity(0.5),
+                          ),
                           const Gap(10),
-                          Text("Tap untuk Upload Foto", style: GoogleFonts.poppins(color: Colors.white70)),
+                          Text(
+                            "Tap untuk Upload Foto",
+                            style: GoogleFonts.poppins(color: Colors.white70),
+                          ),
                         ],
                       ),
               ),
@@ -265,11 +332,19 @@ class _DocumentUploadPageState extends State<DocumentUploadPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFD4AF37),
                   foregroundColor: const Color(0xFF0F172A),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.black)
-                    : Text("UPLOAD & LANJUT KE BOOKING", style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold)),
+                    : Text(
+                        "UPLOAD & LANJUT KE BOOKING",
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],

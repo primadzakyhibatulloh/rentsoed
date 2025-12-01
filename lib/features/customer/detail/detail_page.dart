@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:gap/gap.dart';
-import 'package:cached_network_image/cached_network_image.dart'; 
-import 'package:intl/intl.dart'; 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:rentsoed_app/models/motor_model.dart';
 import 'package:rentsoed_app/features/customer/booking/document_upload_page.dart';
 
 class DetailPage extends StatefulWidget {
-  final MotorModel motor; 
+  final MotorModel motor;
 
   const DetailPage({super.key, required this.motor});
 
@@ -38,7 +38,7 @@ class _DetailPageState extends State<DetailPage> {
       if (mounted) setState(() => _isLoadingFavorite = false);
       return;
     }
-    
+
     try {
       final response = await Supabase.instance.client
           .from('wishlists')
@@ -55,14 +55,16 @@ class _DetailPageState extends State<DetailPage> {
     } catch (e) {
       debugPrint("Error checking wishlist: $e");
     } finally {
-      if (mounted) setState(() => _isLoadingFavorite = false); 
+      if (mounted) setState(() => _isLoadingFavorite = false);
     }
   }
 
   Future<void> _toggleWishlist() async {
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Anda harus login untuk menambahkan favorit.")),
+        const SnackBar(
+          content: Text("Anda harus login untuk menambahkan favorit."),
+        ),
       );
       return;
     }
@@ -76,10 +78,10 @@ class _DetailPageState extends State<DetailPage> {
             .delete()
             .eq('user_id', userId!)
             .eq('motor_id', widget.motor.id);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Dihapus dari favorit.")),
-        );
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Dihapus dari favorit.")));
       } else {
         await Supabase.instance.client.from('wishlists').insert({
           'user_id': userId,
@@ -90,16 +92,16 @@ class _DetailPageState extends State<DetailPage> {
           const SnackBar(content: Text("Ditambahkan ke favorit!")),
         );
       }
-      
+
       if (mounted) {
         setState(() {
           _isFavorite = !_isFavorite;
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Gagal: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Gagal: $e")));
     } finally {
       if (mounted) setState(() => _isLoadingFavorite = false);
     }
@@ -107,7 +109,11 @@ class _DetailPageState extends State<DetailPage> {
 
   String _formatRupiah(int? price) {
     if (price == null) return "Rp 0";
-    final format = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+    final format = NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp ',
+      decimalDigits: 0,
+    );
     return format.format(price);
   }
 
@@ -121,23 +127,26 @@ class _DetailPageState extends State<DetailPage> {
           .single();
       return response['nama_kategori'].toString().toUpperCase();
     } catch (e) {
-      return 'Kategori ID: $categoryId'; 
+      return 'Kategori ID: $categoryId';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    
+
     final safeImageUrl = widget.motor.fotoMotor ?? '';
-    final safeDescription = widget.motor.deskripsi ?? 'Deskripsi belum tersedia untuk motor ini.';
+    final safeDescription =
+        widget.motor.deskripsi ?? 'Deskripsi belum tersedia untuk motor ini.';
     final safeCC = widget.motor.cc?.toString() ?? 'N/A';
     final safePrice = widget.motor.harga;
     final safeYear = widget.motor.tahunKeluaran?.toString() ?? 'N/A';
     final safeColor = widget.motor.warnaMotor ?? 'N/A';
     final isAvailable = widget.motor.isAvailable ?? true;
-    
-    final favoriteIcon = _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded;
+
+    final favoriteIcon = _isFavorite
+        ? Icons.favorite_rounded
+        : Icons.favorite_border_rounded;
     final favoriteColor = _isFavorite ? Colors.redAccent : Colors.white;
 
     return Scaffold(
@@ -168,7 +177,10 @@ class _DetailPageState extends State<DetailPage> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : IconButton(
                           icon: Icon(favoriteIcon, color: favoriteColor),
@@ -201,7 +213,9 @@ class _DetailPageState extends State<DetailPage> {
                               child: Center(
                                 child: Icon(
                                   Icons.motorcycle,
-                                  color: const Color(0xFFD4AF37).withOpacity(0.5),
+                                  color: const Color(
+                                    0xFFD4AF37,
+                                  ).withOpacity(0.5),
                                   size: 100,
                                 ),
                               ),
@@ -218,7 +232,7 @@ class _DetailPageState extends State<DetailPage> {
                             ),
                           ),
                   ),
-                  
+
                   // Gradient Overlay
                   Container(
                     decoration: BoxDecoration(
@@ -240,7 +254,10 @@ class _DetailPageState extends State<DetailPage> {
                       top: 100,
                       left: 20,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.red.withOpacity(0.9),
                           borderRadius: BorderRadius.circular(20),
@@ -273,14 +290,19 @@ class _DetailPageState extends State<DetailPage> {
             child: Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(30),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header Info
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -293,12 +315,19 @@ class _DetailPageState extends State<DetailPage> {
                               builder: (context, snapshot) {
                                 final categoryName = snapshot.data ?? 'LOADING';
                                 return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFD4AF37).withOpacity(0.1),
+                                    color: const Color(
+                                      0xFFD4AF37,
+                                    ).withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: const Color(0xFFD4AF37).withOpacity(0.3),
+                                      color: const Color(
+                                        0xFFD4AF37,
+                                      ).withOpacity(0.3),
                                     ),
                                   ),
                                   child: Text(
@@ -348,7 +377,10 @@ class _DetailPageState extends State<DetailPage> {
 
                   // Specifications Grid
                   Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E293B),
@@ -377,15 +409,27 @@ class _DetailPageState extends State<DetailPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             _buildSpecItem(Icons.speed, "$safeCC CC", "Engine"),
-                            _buildSpecItem(Icons.calendar_today, safeYear, "Tahun"),
+                            _buildSpecItem(
+                              Icons.calendar_today,
+                              safeYear,
+                              "Tahun",
+                            ),
                           ],
                         ),
                         const Gap(16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _buildSpecItem(Icons.color_lens, safeColor, "Warna"),
-                            _buildSpecItem(Icons.inventory_2, isAvailable ? "Tersedia" : "Disewa", "Status"),
+                            _buildSpecItem(
+                              Icons.color_lens,
+                              safeColor,
+                              "Warna",
+                            ),
+                            _buildSpecItem(
+                              Icons.inventory_2,
+                              isAvailable ? "Tersedia" : "Disewa",
+                              "Status",
+                            ),
                           ],
                         ),
                       ],
@@ -394,7 +438,10 @@ class _DetailPageState extends State<DetailPage> {
 
                   // Description Section
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 8,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -483,16 +530,21 @@ class _DetailPageState extends State<DetailPage> {
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
-                  onPressed: isAvailable ? () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DocumentUploadPage(motor: widget.motor),
-                      ),
-                    );
-                  } : null,
+                  onPressed: isAvailable
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  DocumentUploadPage(motor: widget.motor),
+                            ),
+                          );
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isAvailable ? const Color(0xFFD4AF37) : Colors.grey,
+                    backgroundColor: isAvailable
+                        ? const Color(0xFFD4AF37)
+                        : Colors.grey,
                     foregroundColor: const Color(0xFF0F172A),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -553,10 +605,7 @@ class _DetailPageState extends State<DetailPage> {
           const Gap(4),
           Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white54,
-            ),
+            style: GoogleFonts.poppins(fontSize: 12, color: Colors.white54),
             textAlign: TextAlign.center,
           ),
         ],

@@ -12,7 +12,16 @@
           "package_name": "com.example.rentsoed_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "9101466724-o55tgmfmmve62frvpjrrin19duevd483.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "9101466724-buaaqg255d13i44h8qdk8828entth9sm.apps.googleusercontent.com", 
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCLl3be7IdtSKf8X0kA7C_eeRiV_BAQaKs"

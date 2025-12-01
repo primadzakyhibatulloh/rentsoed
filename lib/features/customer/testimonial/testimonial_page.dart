@@ -14,12 +14,14 @@ class TestimonialPage extends StatefulWidget {
   State<TestimonialPage> createState() => _TestimonialPageState();
 }
 
-class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProviderStateMixin {
+class _TestimonialPageState extends State<TestimonialPage>
+    with SingleTickerProviderStateMixin {
   late Future<List<Map<String, dynamic>>> _reviewsFuture;
   late AnimationController _animationController;
   final ScrollController _scrollController = ScrollController();
-  String _selectedFilter = 'all'; // Nilai bisa: 'all', '5_star', '4_star', ..., '1_star'
-  
+  String _selectedFilter =
+      'all'; // Nilai bisa: 'all', '5_star', '4_star', ..., '1_star'
+
   // Data opsi Dropdown
   final List<Map<String, String>> _ratingOptions = [
     {'label': 'Semua Bintang', 'value': 'all'},
@@ -30,7 +32,6 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
     {'label': '⭐ 1 Bintang', 'value': '1_star'},
   ];
 
-
   @override
   void initState() {
     super.initState();
@@ -38,7 +39,7 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-    
+
     _scrollController.addListener(_onScroll);
     _fetchReviews();
 
@@ -56,7 +57,7 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
 
   void _onScroll() {
     // Logika ini tidak lagi diperlukan karena AppBar tidak collapsible
-    // setState(() { _showAppBarShadow = _scrollController.offset > 50; }); 
+    // setState(() { _showAppBarShadow = _scrollController.offset > 50; });
   }
 
   void _fetchReviews() {
@@ -68,48 +69,46 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
   Future<List<Map<String, dynamic>>> _getReviewsData() async {
     try {
       final supabase = Supabase.instance.client;
-      
-      String selectQuery = 
+
+      String selectQuery =
           'rating, comment, created_at, '
           'bookings:booking_id(motor_id, user_id, '
-            'motors(nama_motor, foto_motor), '
-            'profiles(full_name, avatar_url)'
+          'motors(nama_motor, foto_motor), '
+          'profiles(full_name, avatar_url)'
           ')';
 
       // FIX RLS/TYPE ERROR: Menggunakan dynamic untuk variabel query
-      dynamic query = supabase
-          .from('reviews')
-          .select(selectQuery);
+      dynamic query = supabase.from('reviews').select(selectQuery);
 
       // 1. Terapkan filter di sisi database berdasarkan bintang yang dipilih
       if (_selectedFilter.endsWith('_star')) {
         final ratingValue = int.tryParse(_selectedFilter.split('_').first);
         if (ratingValue != null && ratingValue >= 1 && ratingValue <= 5) {
-            query = query.eq('rating', ratingValue);
+          query = query.eq('rating', ratingValue);
         }
       }
 
       // 2. Terapkan transformasi (ORDER dan LIMIT)
       query = query.order('created_at', ascending: false);
-      
+
       final reviewsResponse = await query.limit(50);
-      
+
       if (reviewsResponse.isEmpty) {
         return [];
       }
 
       final oneWeekAgo = DateTime.now().subtract(const Duration(days: 7));
-      
+
       List<Map<String, dynamic>> processedReviews = [];
 
       // 3. Proses, Filter Lokal (Filter 'recent' - logic ini dipertahankan) dan Flatten Data
       for (final review in reviewsResponse) {
         final bookingData = review['bookings'] as Map<String, dynamic>?;
-        if (bookingData == null) continue; 
+        if (bookingData == null) continue;
 
         final motorData = bookingData['motors'] as Map<String, dynamic>?;
         final profileData = bookingData['profiles'] as Map<String, dynamic>?;
-        
+
         final createdAtStr = review['created_at'] as String?;
         if (createdAtStr == null) continue;
 
@@ -117,17 +116,17 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
         if (_selectedFilter == 'recent') {
           final reviewDate = DateTime.parse(createdAtStr);
           if (reviewDate.isBefore(oneWeekAgo)) {
-            continue; 
+            continue;
           }
         }
-        
+
         // Gabungkan/Flatten data
         processedReviews.add({
           // Data Review
           'rating': review['rating'] as int,
           'comment': review['comment'] as String?,
           'created_at': createdAtStr,
-          
+
           // Data User (Nama Pelanggan ASLI)
           'full_name': profileData?['full_name'] ?? 'Pelanggan',
           'avatar_url': profileData?['avatar_url'],
@@ -141,23 +140,29 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
       return processedReviews;
     } catch (e) {
       debugPrint('Error fetching reviews: $e');
-      throw Exception('Gagal memuat testimoni. Pastikan RLS di tabel reviews, bookings, profiles, dan motors sudah diatur.');
+      throw Exception(
+        'Gagal memuat testimoni. Pastikan RLS di tabel reviews, bookings, profiles, dan motors sudah diatur.',
+      );
     }
   }
 
   void _applyFilter(String filter) {
-    if (_selectedFilter == filter) return; 
-    
+    if (_selectedFilter == filter) return;
+
     setState(() {
       _selectedFilter = filter;
       _reviewsFuture = _getReviewsData();
     });
     // Scroll ke atas saat filter diterapkan
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
-  
+
   // --- HELPER FUNCTIONS (getTimeAgo, getRatingDescription, etc.) tetap sama ---
   String _getTimeAgo(String dateStr) {
     try {
@@ -183,12 +188,18 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
 
   String _getRatingDescription(double rating) {
     switch (rating.round()) {
-      case 5: return 'Sangat Memuaskan';
-      case 4: return 'Memuaskan';
-      case 3: return 'Cukup Baik';
-      case 2: return 'Kurang Memuaskan';
-      case 1: return 'Tidak Memuaskan';
-      default: return 'Belum Dinilai';
+      case 5:
+        return 'Sangat Memuaskan';
+      case 4:
+        return 'Memuaskan';
+      case 3:
+        return 'Cukup Baik';
+      case 2:
+        return 'Kurang Memuaskan';
+      case 1:
+        return 'Tidak Memuaskan';
+      default:
+        return 'Belum Dinilai';
     }
   }
 
@@ -259,16 +270,24 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                   height: 50,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3)),
+                    border: Border.all(
+                      color: const Color(0xFFD4AF37).withOpacity(0.3),
+                    ),
                     image: avatarUrl != null && avatarUrl.toString().isNotEmpty
                         ? DecorationImage(
-                              image: CachedNetworkImageProvider(avatarUrl.toString()),
-                              fit: BoxFit.cover,
-                            )
+                            image: CachedNetworkImageProvider(
+                              avatarUrl.toString(),
+                            ),
+                            fit: BoxFit.cover,
+                          )
                         : null,
                   ),
                   child: avatarUrl == null || avatarUrl.toString().isEmpty
-                      ? const Icon(Icons.person_rounded, color: Colors.white54, size: 24)
+                      ? const Icon(
+                          Icons.person_rounded,
+                          color: Colors.white54,
+                          size: 24,
+                        )
                       : null,
                 ),
                 const Gap(12),
@@ -309,7 +328,8 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                   itemCount: 5,
                   itemSize: 24,
                   itemPadding: const EdgeInsets.symmetric(horizontal: 2.0),
-                  itemBuilder: (context, _) => const Icon(Icons.star_rounded, color: Colors.amber),
+                  itemBuilder: (context, _) =>
+                      const Icon(Icons.star_rounded, color: Colors.amber),
                   onRatingUpdate: (rating) {},
                   ignoreGestures: true,
                 ),
@@ -343,15 +363,25 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       color: Colors.white.withOpacity(0.02),
-                      image: motorImage != null && motorImage.toString().startsWith('http')
+                      image:
+                          motorImage != null &&
+                              motorImage.toString().startsWith('http')
                           ? DecorationImage(
-                              image: CachedNetworkImageProvider(motorImage.toString()),
+                              image: CachedNetworkImageProvider(
+                                motorImage.toString(),
+                              ),
                               fit: BoxFit.cover,
                             )
                           : null,
                     ),
-                    child: motorImage == null || !motorImage.toString().startsWith('http')
-                        ? const Icon(Icons.motorcycle_rounded, color: Colors.white54, size: 24)
+                    child:
+                        motorImage == null ||
+                            !motorImage.toString().startsWith('http')
+                        ? const Icon(
+                            Icons.motorcycle_rounded,
+                            color: Colors.white54,
+                            size: 24,
+                          )
                         : null,
                   ),
                   const Gap(12),
@@ -428,25 +458,38 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B), // Navy Terang
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFD4AF37), width: 1.5), // Border Emas
+        border: Border.all(
+          color: const Color(0xFFD4AF37),
+          width: 1.5,
+        ), // Border Emas
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedFilter,
           isExpanded: true,
-          style: GoogleFonts.poppins(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
           dropdownColor: const Color(0xFF1E293B),
           icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFFD4AF37)),
-          
-          hint: Text(currentLabel, style: GoogleFonts.poppins(color: Colors.white)),
+
+          hint: Text(
+            currentLabel,
+            style: GoogleFonts.poppins(color: Colors.white),
+          ),
 
           items: _ratingOptions.map((Map<String, String> option) {
             return DropdownMenuItem<String>(
               value: option['value'],
-              child: Text(option['label']!, style: GoogleFonts.poppins(color: Colors.white)),
+              child: Text(
+                option['label']!,
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
             );
           }).toList(),
-          
+
           onChanged: (String? newValue) {
             if (newValue != null) {
               _applyFilter(newValue);
@@ -457,17 +500,12 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      // --- APP BAR (Tombol Back) ---
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           "Testimoni Pelanggan",
           style: GoogleFonts.playfairDisplay(
@@ -486,7 +524,10 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
             // Header besar saat belum scroll
             SliverToBoxAdapter(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -512,11 +553,14 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                 ),
               ),
             ),
-            
+
             // --- DROPDOWN FILTER BARU ---
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 0,
+                ),
                 child: _buildRatingDropdown(),
               ),
             ),
@@ -537,8 +581,11 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline_rounded, 
-                        color: Colors.redAccent, size: 60),
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Colors.redAccent,
+                      size: 60,
+                    ),
                     const Gap(16),
                     Text(
                       "Gagal memuat testimoni",
@@ -567,11 +614,14 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.star_outline_rounded, 
-                        color: Colors.white24, size: 80),
+                    const Icon(
+                      Icons.star_outline_rounded,
+                      color: Colors.white24,
+                      size: 80,
+                    ),
                     const Gap(16),
                     Text(
-                      _selectedFilter != 'all' 
+                      _selectedFilter != 'all'
                           ? "Tidak ada testimoni untuk filter ini"
                           : "Belum ada testimoni dari pelanggan",
                       style: GoogleFonts.poppins(
@@ -627,7 +677,12 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
     return Animate(
       effects: [
         FadeEffect(duration: 500.ms, delay: (100 * index).ms),
-        SlideEffect(begin: const Offset(0, 0.3), end: Offset.zero, duration: 500.ms, delay: (100 * index).ms)
+        SlideEffect(
+          begin: const Offset(0, 0.3),
+          end: Offset.zero,
+          duration: 500.ms,
+          delay: (100 * index).ms,
+        ),
       ],
       child: Card(
         margin: const EdgeInsets.only(bottom: 16),
@@ -655,16 +710,25 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                       height: 40,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3)),
-                        image: avatarUrl != null && avatarUrl.toString().isNotEmpty
+                        border: Border.all(
+                          color: const Color(0xFFD4AF37).withOpacity(0.3),
+                        ),
+                        image:
+                            avatarUrl != null && avatarUrl.toString().isNotEmpty
                             ? DecorationImage(
-                                image: CachedNetworkImageProvider(avatarUrl.toString()),
+                                image: CachedNetworkImageProvider(
+                                  avatarUrl.toString(),
+                                ),
                                 fit: BoxFit.cover,
                               )
                             : null,
                       ),
                       child: avatarUrl == null || avatarUrl.toString().isEmpty
-                          ? const Icon(Icons.person_rounded, color: Colors.white54, size: 18)
+                          ? const Icon(
+                              Icons.person_rounded,
+                              color: Colors.white54,
+                              size: 18,
+                            )
                           : null,
                     ),
                     const Gap(12),
@@ -690,8 +754,13 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                             allowHalfRating: false,
                             itemCount: 5,
                             itemSize: 16,
-                            itemPadding: const EdgeInsets.symmetric(horizontal: 0.0),
-                            itemBuilder: (context, _) => const Icon(Icons.star_rounded, color: Colors.amber),
+                            itemPadding: const EdgeInsets.symmetric(
+                              horizontal: 0.0,
+                            ),
+                            itemBuilder: (context, _) => const Icon(
+                              Icons.star_rounded,
+                              color: Colors.amber,
+                            ),
                             onRatingUpdate: (rating) {},
                             ignoreGestures: true,
                           ),
@@ -713,7 +782,10 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                 // 2. COMMENT BODY
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.03),
                     borderRadius: BorderRadius.circular(10),
@@ -734,7 +806,11 @@ class _TestimonialPageState extends State<TestimonialPage> with SingleTickerProv
                 // 3. MOTOR INFO
                 Row(
                   children: [
-                    const Icon(Icons.motorcycle_rounded, color: Color(0xFFD4AF37), size: 16),
+                    const Icon(
+                      Icons.motorcycle_rounded,
+                      color: Color(0xFFD4AF37),
+                      size: 16,
+                    ),
                     const Gap(8),
                     Text(
                       motorName,
