@@ -1,4 +1,4 @@
-import 'dart:async'; // Tambahkan ini untuk Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,11 +7,16 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+// Import Halaman & Model
 import 'package:rentsoed_app/features/customer/detail/detail_page.dart';
 import 'package:rentsoed_app/models/motor_model.dart';
 import 'package:rentsoed_app/models/category_model.dart';
 import 'package:rentsoed_app/widgets/custom_drawer.dart';
 import 'package:rentsoed_app/features/customer/inbox/inbox_page.dart';
+import 'package:rentsoed_app/features/customer/voucher/promo_list_page.dart';
+
+// ✅ IMPORT Payment Page
+import 'package:rentsoed_app/features/customer/payment/payment_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -25,6 +30,9 @@ class _HomePageState extends State<HomePage> {
   String _selectedCategoryId = 'all';
   String _searchQuery = '';
 
+  // ✅ State untuk mengontrol visibilitas kartu pembayaran
+  bool _showPaymentCard = true;
+
   // --- CAROUSEL VARIABLES ---
   final PageController _pageController = PageController();
   int _currentPromoIndex = 0;
@@ -33,8 +41,8 @@ class _HomePageState extends State<HomePage> {
   // --- STREAMS ---
   late final Stream<List<Map<String, dynamic>>> _categoriesStream;
   late final Stream<List<Map<String, dynamic>>> _motorsStream;
-  late final Stream<List<Map<String, dynamic>>>
-  _promosStream; // Stream Promo Baru
+  late final Stream<List<Map<String, dynamic>>> _promosStream;
+  late final Stream<List<Map<String, dynamic>>> _pendingPaymentStream;
 
   // --- THEME COLORS ---
   final Color gold = const Color(0xFFD4AF37);
@@ -44,6 +52,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    final userId = Supabase.instance.client.auth.currentUser?.id;
 
     // 1. STREAM KATEGORI
     _categoriesStream = Supabase.instance.client
@@ -75,29 +84,49 @@ class _HomePageState extends State<HomePage> {
           }).toList();
         });
 
-    // 3. STREAM PROMO (BARU)
+    // 3. STREAM PROMO
     _promosStream = Supabase.instance.client
         .from('promos')
         .stream(primaryKey: ['id'])
-        .order('id'); // Anda bisa ganti order created_at jika ada
+        .order('id')
+        .map((rows) {
+          // Filter is_active manual di sini
+          return rows.where((r) => r['is_active'] == true).toList();
+        });
+
+    // 4. STREAM PENDING PAYMENT
+    if (userId != null) {
+      _pendingPaymentStream = Supabase.instance.client
+          .from('bookings')
+          .stream(primaryKey: ['id'])
+          .order('created_at', ascending: false) // Order didukung
+          .map((data) {
+            return data.where((booking) {
+              return booking['user_id'] == userId &&
+                  booking['status'] == 'Menunggu Pembayaran';
+            }).toList();
+          });
+    } else {
+      _pendingPaymentStream = const Stream.empty();
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _carouselTimer?.cancel(); // Hentikan timer saat keluar halaman
+    _carouselTimer?.cancel();
     super.dispose();
   }
 
   // --- LOGIC AUTO PLAY CAROUSEL ---
   void _startAutoPlay(int itemCount) {
-    _carouselTimer?.cancel(); // Reset timer lama jika ada
+    _carouselTimer?.cancel();
     if (itemCount > 1) {
       _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
         if (_pageController.hasClients) {
           int nextPage = _pageController.page!.toInt() + 1;
           if (nextPage >= itemCount) {
-            nextPage = 0; // Loop kembali ke awal
+            nextPage = 0;
           }
           _pageController.animateToPage(
             nextPage,
@@ -110,7 +139,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   // --- HELPER FUNCTIONS ---
-
   String formatRupiah(int number) {
     return NumberFormat.currency(
       locale: 'id_ID',
@@ -149,17 +177,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   // --- EVENT HANDLERS ---
-
   void _onCategorySelected(String categoryId) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-    });
+    setState(() => _selectedCategoryId = categoryId);
   }
 
   void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
-    });
+    setState(() => _searchQuery = query);
   }
 
   void _navigateToInbox() {
@@ -168,8 +191,6 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (context) => const InboxPage()),
     );
   }
-
-  // --- BUILD METHOD ---
 
   @override
   Widget build(BuildContext context) {
@@ -201,128 +222,300 @@ class _HomePageState extends State<HomePage> {
           const Gap(8),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // HEADER WELCOME
-            Text(
-              "Welcome Back,",
-              style: GoogleFonts.poppins(color: Colors.white54, fontSize: 14),
-            ),
-            Text(
-              userName,
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const Gap(14),
 
-            // PROMO CAROUSEL (DARI SUPABASE)
-            _buildPromoCarouselStream(),
-            const Gap(16),
+      body: Stack(
+        children: [
+          // LAYER 1: KONTEN UTAMA
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Welcome Back,",
+                  style: GoogleFonts.poppins(
+                    color: Colors.white54,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  userName,
+                  style: GoogleFonts.playfairDisplay(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Gap(20),
 
-            // SEARCH BAR
-            _buildSearchBar(),
-            const Gap(16),
+                // HEADER PROMO
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Promo Spesial",
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PromoListPage(),
+                        ),
+                      ),
+                      child: Text(
+                        "Lihat Semua",
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: gold,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(10),
 
-            // CATEGORY LIST
-            SizedBox(
-              height: 50,
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _categoriesStream,
-                builder: (context, snapCat) {
-                  if (snapCat.connectionState == ConnectionState.waiting) {
-                    return _buildCategoryShimmer();
-                  }
-                  final categories = _toCategoryModels(snapCat.data ?? []);
-                  return ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: categories.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, i) {
-                      return _buildCategoryChip(
-                        categories[i],
-                        _selectedCategoryId == categories[i].id,
+                _buildPromoCarouselStream(),
+                const Gap(20),
+
+                _buildSearchBar(),
+                const Gap(16),
+
+                // CATEGORY LIST
+                SizedBox(
+                  height: 50,
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _categoriesStream,
+                    builder: (context, snapCat) {
+                      if (snapCat.connectionState == ConnectionState.waiting)
+                        return _buildCategoryShimmer();
+                      final categories = _toCategoryModels(snapCat.data ?? []);
+                      return ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: categories.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (context, i) => _buildCategoryChip(
+                          categories[i],
+                          _selectedCategoryId == categories[i].id,
+                        ),
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+                const Gap(16),
+
+                // MOTORS GRID
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _motorsStream,
+                    builder: (context, snapMotors) {
+                      if (snapMotors.connectionState == ConnectionState.waiting)
+                        return _buildLoadingGrid();
+                      if (snapMotors.hasError)
+                        return Center(
+                          child: Text(
+                            "Error memuat data",
+                            style: GoogleFonts.poppins(color: Colors.red),
+                          ),
+                        );
+
+                      final rawData = snapMotors.data ?? [];
+                      final allMotors = _toMotorModels(rawData);
+
+                      final filteredMotors = allMotors.where((motor) {
+                        final matchCategory =
+                            _selectedCategoryId == 'all' ||
+                            motor.categoryId == _selectedCategoryId;
+                        final matchSearch = motor.namaMotor
+                            .toLowerCase()
+                            .contains(_searchQuery.toLowerCase());
+                        return matchCategory && matchSearch;
+                      }).toList();
+
+                      filteredMotors.sort(
+                        (a, b) => a.namaMotor.compareTo(b.namaMotor),
+                      );
+
+                      if (filteredMotors.isEmpty) return _buildEmptyState();
+
+                      return GridView.builder(
+                        padding: const EdgeInsets.only(bottom: 100),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 0.65,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                            ),
+                        itemCount: filteredMotors.length,
+                        itemBuilder: (context, index) =>
+                            _buildMotorCard(filteredMotors[index], index),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
+          ),
 
-            const Gap(16),
+          // LAYER 2: FLOATING PAYMENT CARD
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _pendingPaymentStream,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData ||
+                  snapshot.data!.isEmpty ||
+                  !_showPaymentCard) {
+                return const SizedBox.shrink();
+              }
 
-            // MOTORS GRID
-            Expanded(
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: _motorsStream,
-                builder: (context, snapMotors) {
-                  if (snapMotors.connectionState == ConnectionState.waiting)
-                    return _buildLoadingGrid();
-                  if (snapMotors.hasError)
-                    return Center(
-                      child: Text(
-                        "Error memuat data",
-                        style: GoogleFonts.poppins(color: Colors.red),
-                      ),
-                    );
+              final booking = snapshot.data!.first;
+              final bookingId = booking['id'];
+              final motorName = booking['motor_name'] ?? 'Motor';
+              final totalPrice = booking['total_price'] as int? ?? 0;
 
-                  final rawData = snapMotors.data ?? [];
-                  final allMotors = _toMotorModels(rawData);
-
-                  final filteredMotors = allMotors.where((motor) {
-                    final matchCategory =
-                        _selectedCategoryId == 'all' ||
-                        motor.categoryId == _selectedCategoryId;
-                    final matchSearch = motor.namaMotor.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    );
-                    return matchCategory && matchSearch;
-                  }).toList();
-
-                  filteredMotors.sort(
-                    (a, b) => a.namaMotor.compareTo(b.namaMotor),
-                  );
-
-                  if (filteredMotors.isEmpty) return _buildEmptyState();
-
-                  return GridView.builder(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 0.65,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
+              return Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child:
+                    Dismissible(
+                          key: Key(bookingId),
+                          direction: DismissDirection.horizontal,
+                          onDismissed: (direction) {
+                            setState(() {
+                              _showPaymentCard = false;
+                            });
+                          },
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => PaymentPage(
+                                    bookingId: bookingId,
+                                    totalPrice: totalPrice,
+                                    motorName: motorName,
+                                  ),
+                                ),
+                              );
+                            },
+                            // --- ANIMASI 1: SHIMMER BERULANG (LOOP) ---
+                            // Kita taruh di Container agar hanya efek kilaunya yang berulang
+                            child:
+                                Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.redAccent.shade700,
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.4,
+                                            ),
+                                            blurRadius: 15,
+                                            offset: const Offset(0, 5),
+                                          ),
+                                        ],
+                                        border: Border.all(
+                                          color: Colors.white24,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(
+                                                0.2,
+                                              ),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.access_time_filled,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Gap(16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  "Menunggu Pembayaran!",
+                                                  style: GoogleFonts.poppins(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  "Selesaikan sewa $motorName.",
+                                                  style: GoogleFonts.poppins(
+                                                    color: Colors.white70,
+                                                    fontSize: 12,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const Icon(
+                                            Icons.arrow_forward_ios,
+                                            color: Colors.white70,
+                                            size: 16,
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                    .animate(
+                                      onPlay: (controller) =>
+                                          controller.repeat(), // ✅ MEMBUAT LOOP
+                                    )
+                                    .shimmer(
+                                      delay:
+                                          2000.ms, // Jeda 2 detik setiap kilau
+                                      duration: 1500.ms, // Durasi kilau lewat
+                                      color: Colors.white.withOpacity(
+                                        0.4,
+                                      ), // Warna kilau
+                                    ),
+                          ),
+                        )
+                        // --- ANIMASI 2: SLIDE UP (SEKALI SAJA) ---
+                        // Ditaruh di luar Container (di Dismissible) agar kartunya muncul cantik dari bawah
+                        .animate()
+                        .slideY(
+                          begin: 1, // Mulai dari bawah
+                          end: 0, // Ke posisi asli
+                          duration: 600.ms,
+                          curve: Curves.easeOutBack,
                         ),
-                    itemCount: filteredMotors.length,
-                    itemBuilder: (context, index) =>
-                        _buildMotorCard(filteredMotors[index], index),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
   // --- WIDGET PROMO CAROUSEL ---
-
   Widget _buildPromoCarouselStream() {
     return SizedBox(
-      height: 140, // Tinggi banner
+      height: 140,
       width: double.infinity,
       child: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _promosStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            // Shimmer loading banner
             return Container(
               decoration: BoxDecoration(
                 color: Colors.white10,
@@ -334,12 +527,9 @@ class _HomePageState extends State<HomePage> {
           final promos = snapshot.data ?? [];
 
           if (promos.isEmpty) {
-            // Jika tidak ada promo, tampilkan banner default statis
             return _buildDefaultPromoBanner();
           }
 
-          // Mulai Auto Play jika data sudah masuk
-          // Menggunakan addPostFrameCallback agar tidak error setState saat build
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (_carouselTimer == null || !_carouselTimer!.isActive) {
               _startAutoPlay(promos.length);
@@ -355,10 +545,19 @@ class _HomePageState extends State<HomePage> {
                   setState(() => _currentPromoIndex = index);
                 },
                 itemBuilder: (context, index) {
-                  return _buildPromoCard(promos[index]);
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PromoListPage(),
+                        ),
+                      );
+                    },
+                    child: _buildPromoCard(promos[index]),
+                  );
                 },
               ),
-              // Indikator Titik (Dots)
               if (promos.length > 1)
                 Positioned(
                   bottom: 12,
@@ -387,31 +586,25 @@ class _HomePageState extends State<HomePage> {
     ).animate().fadeIn(duration: 600.ms);
   }
 
-  // Kartu Promo Individual (Data dari Supabase)
   Widget _buildPromoCard(Map<String, dynamic> promo) {
-    // Ambil data dari tabel
     final code = promo['code'] ?? '';
     final description = promo['description'] ?? '';
     final discountType = promo['discount_type'] ?? 'fixed';
     final discountValue = promo['discount_value'] ?? 0;
 
-    // Format Text Diskon
     String discountText = '';
     if (discountType == 'percentage') {
       discountText = "$discountValue%";
     } else {
-      discountText = formatRupiah(discountValue); // e.g. Rp 10.000
+      discountText = formatRupiah(discountValue);
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 0,
-      ), // Full width atau tambah margin jika perlu
+      margin: const EdgeInsets.symmetric(horizontal: 0),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
-          // Gradient sedikit berbeda biar mewah
           colors: [gold.withOpacity(0.25), const Color(0xFF1E293B)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -436,7 +629,7 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    code, // Kode Promo
+                    code,
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -446,7 +639,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const Gap(8),
                 Text(
-                  description, // Deskripsi
+                  description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.playfairDisplay(
@@ -457,7 +650,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const Gap(4),
                 Text(
-                  "Hemat hingga $discountText", // Nilai Diskon
+                  "Hemat hingga $discountText",
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: Colors.white70,
@@ -491,7 +684,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Fallback jika tidak ada promo
   Widget _buildDefaultPromoBanner() {
     return Container(
       width: double.infinity,
@@ -509,8 +701,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
-  // --- COMPONENT LAINNYA (TETAP SAMA SEPERTI SEBELUMNYA) ---
 
   Widget _buildCategoryChip(CategoryModel category, bool isSelected) {
     return GestureDetector(
@@ -613,7 +803,7 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               flex: 3,
               child: Hero(
-                tag: motor.id + (motor.namaMotor ?? ''),
+                tag: motor.id + (motor.namaMotor),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(

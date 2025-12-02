@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:gap/gap.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:rentsoed_app/services/notification_service.dart';
 
 class BookingDetailPage extends StatefulWidget {
   final Map<String, dynamic> bookingData;
@@ -62,12 +63,12 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     return response;
   }
 
-  // --- FUNGSI 3: UPDATE STATUS BOOKING ---
+  // --- FUNGSI UPDATE STATUS DENGAN NOTIFIKASI POP-UP ---
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _isUpdating = true);
     final supabase = Supabase.instance.client;
     final bookingId = widget.bookingData['id'];
-    final motorId = widget.bookingData['motor_id']; // ambil ID motor
+    final motorId = widget.bookingData['motor_id'];
     final adminId = supabase.auth.currentUser?.id;
 
     try {
@@ -82,24 +83,22 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
             : widget.bookingData['paid_at'],
       };
 
-      // 🔹 1. Update status booking
+      // 1. Update Booking
       await supabase.from('bookings').update(updateData).eq('id', bookingId);
 
-      // 🔹 2. Update invoice (paid status)
+      // 2. Update Invoice
       await supabase
           .from('invoices')
           .update({'is_paid': isPaid || isFinished, 'admin_id': adminId})
           .eq('booking_id', bookingId);
 
-      // 🔹 3. UPDATE STATUS MOTOR
+      // 3. Update Motor Availability
       if (isPaid) {
-        // Jika admin verifikasi → motor TIDAK tersedia
         await supabase
             .from('motors')
             .update({'is_available': false})
             .eq('id', motorId);
       } else if (isFinished || isCanceled) {
-        // Jika selesai / dibatalkan → motor tersedia lagi
         await supabase
             .from('motors')
             .update({'is_available': true})
@@ -114,7 +113,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
           ),
         );
 
-        // Refresh data
         setState(() {
           _futureBookingDetails = _fetchDetails();
           _futureDocument = _fetchDocuments(widget.bookingData['user_id']);
@@ -513,9 +511,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                           ),
                           const Gap(20),
 
-                          // Tombol Verifikasi/Aksi HANYA JIKA status 'Menunggu Pembayaran' ATAU 'Menunggu Verifikasi'
-                          if (status == 'Menunggu Pembayaran' ||
-                              status == 'Menunggu Verifikasi')
+                          // Tombol Aksi HANYA JIKA bukti sudah ada
+                          if (status == 'Menunggu Verifikasi')
                             Column(
                               children: [
                                 SizedBox(
@@ -556,6 +553,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                                   ),
                                 ),
                                 const Gap(10),
+                                // Tombol Batalkan saat Verifikasi
                                 SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton.icon(
@@ -623,12 +621,40 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                         ],
                       )
                     else
-                      // Jika belum ada bukti pembayaran
+                      // Jika belum ada bukti pembayaran (Status: Menunggu Pembayaran)
                       Text(
                         "Pelanggan belum mengunggah bukti pembayaran.",
                         style: GoogleFonts.poppins(color: Colors.white54),
                       ),
 
+                    const Gap(30),
+
+                    // --- TOMBOL BATALKAN UNTUK STATUS 'Menunggu Pembayaran' (Tanpa Bukti) ---
+                    // Tombol ini akan muncul jika status 'Menunggu Pembayaran' DAN paymentProofUrl masih null.
+                    if (status == 'Menunggu Pembayaran' &&
+                        paymentProofUrl == null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _isUpdating
+                              ? null
+                              : () => _showStatusConfirmation(
+                                  context,
+                                  'Dibatalkan',
+                                ),
+                          icon: const Icon(
+                            Icons.cancel,
+                            color: Colors.redAccent,
+                          ),
+                          label: Text(
+                            "TOLAK / BATALKAN BOOKING",
+                            style: GoogleFonts.poppins(color: Colors.redAccent),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.redAccent),
+                          ),
+                        ),
+                      ),
                     const Gap(30),
                   ],
                 ),

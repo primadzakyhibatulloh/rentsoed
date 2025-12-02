@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:rentsoed_app/features/splash/splash_page.dart'; // Import Splash Page
+import 'package:rentsoed_app/features/splash/splash_page.dart';
+import 'package:rentsoed_app/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +13,8 @@ void main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmZmpwd3FleHNlY29mZ29heGd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MDY2OTAsImV4cCI6MjA3OTM4MjY5MH0.yxtGbfF8SApNeHtcK4_ro5lCLgp49jTS8LkvCAS8DVI',
   );
+
+  await NotificationService.init();
 
   runApp(const RentsoedApp());
 }

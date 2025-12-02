@@ -29,6 +29,7 @@ dependencies:
   supabase_flutter: ^2.8.3
   image_picker: ^1.1.2
   google_sign_in: ^6.1.6
+  flutter_local_notifications: ^17.0.0
   
   # --- FIX KONFLIK: Versi postgrest dinaikkan ke ^2.5.0 ---
   # Ini mengatasi error karena versi lama postgrest bentrok dengan dependensi supabase

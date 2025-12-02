@@ -15,6 +15,10 @@
     
     <!-- Izin Baca Galeri (Khusus Android 13 ke atas) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     
     <!-- ================================================= -->
 

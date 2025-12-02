@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart'; // Untuk kIsWeb
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
-import 'package:image_picker/image_picker.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
@@ -29,7 +29,11 @@ class _PaymentPageState extends State<PaymentPage> {
 
   // Helper Format Rupiah
   String formatRupiah(int number) {
-    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(number);
+    return NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp ',
+      decimalDigits: 0,
+    ).format(number);
   }
 
   // --- 1. AMBIL FOTO (Kompresi Otomatis) ---
@@ -39,9 +43,9 @@ class _PaymentPageState extends State<PaymentPage> {
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 50, // Kualitas 50%
-      maxWidth: 800,    // Lebar maksimal 800px
+      maxWidth: 800, // Lebar maksimal 800px
     );
-    
+
     if (pickedFile != null) {
       setState(() {
         _selectedImage = pickedFile;
@@ -64,49 +68,63 @@ class _PaymentPageState extends State<PaymentPage> {
     try {
       final supabase = Supabase.instance.client;
       // Gunakan timestamp untuk nama file agar unik dan menghindari cache issue
-      final fileName = '${widget.bookingId}_${DateTime.now().millisecondsSinceEpoch}.jpg'; 
+      final fileName =
+          '${widget.bookingId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       // A. Upload Foto ke Bucket 'payment_proofs'
       // Supabase butuh 'Bytes' untuk Web dan 'File' untuk Mobile
       if (kIsWeb) {
         final bytes = await _selectedImage!.readAsBytes();
-        await supabase.storage.from('payment_proofs').uploadBinary(
-          fileName,
-          bytes,
-          fileOptions: const FileOptions(upsert: true), // Timpa jika ada
-        );
+        await supabase.storage
+            .from('payment_proofs')
+            .uploadBinary(
+              fileName,
+              bytes,
+              fileOptions: const FileOptions(upsert: true), // Timpa jika ada
+            );
       } else {
-        await supabase.storage.from('payment_proofs').upload(
-          fileName,
-          File(_selectedImage!.path),
-          fileOptions: const FileOptions(upsert: true),
-        );
+        await supabase.storage
+            .from('payment_proofs')
+            .upload(
+              fileName,
+              File(_selectedImage!.path),
+              fileOptions: const FileOptions(upsert: true),
+            );
       }
 
       // B. Ambil Link Foto (Public URL)
-      final imageUrl = supabase.storage.from('payment_proofs').getPublicUrl(fileName);
+      final imageUrl = supabase.storage
+          .from('payment_proofs')
+          .getPublicUrl(fileName);
 
       // C. Update Data di Tabel 'bookings'
-      await supabase.from('bookings').update({
-        'status': 'Menunggu Verifikasi', // Status berubah agar Admin tahu ada pembayaran masuk
-        'payment_proof_url': imageUrl, 
-        'paid_at': DateTime.now().toIso8601String(),
-      }).eq('id', widget.bookingId); // Cari berdasarkan ID Booking
+      await supabase
+          .from('bookings')
+          .update({
+            'status':
+                'Menunggu Verifikasi', // Status berubah agar Admin tahu ada pembayaran masuk
+            'payment_proof_url': imageUrl,
+            'paid_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', widget.bookingId); // Cari berdasarkan ID Booking
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Bukti terkirim! Admin akan memverifikasi."), 
-            backgroundColor: Colors.green
+            content: Text("Bukti terkirim! Admin akan memverifikasi."),
+            backgroundColor: Colors.green,
           ),
         );
         // Kembali ke halaman sebelumnya (Biasanya Riwayat)
-        Navigator.pop(context); 
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal Upload: $e"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Gagal Upload: $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -119,7 +137,13 @@ class _PaymentPageState extends State<PaymentPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A), // Background Navy
       appBar: AppBar(
-        title: Text("Upload Bukti", style: GoogleFonts.playfairDisplay(color: const Color(0xFFD4AF37), fontWeight: FontWeight.bold)),
+        title: Text(
+          "Upload Bukti",
+          style: GoogleFonts.playfairDisplay(
+            color: const Color(0xFFD4AF37),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         leading: const BackButton(color: Colors.white),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -135,18 +159,33 @@ class _PaymentPageState extends State<PaymentPage> {
               decoration: BoxDecoration(
                 color: const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3)),
+                border: Border.all(
+                  color: const Color(0xFFD4AF37).withOpacity(0.3),
+                ),
               ),
               child: Column(
                 children: [
-                  Text("Total Tagihan", style: GoogleFonts.poppins(color: Colors.white54)),
+                  Text(
+                    "Total Tagihan",
+                    style: GoogleFonts.poppins(color: Colors.white54),
+                  ),
                   const Gap(8),
                   Text(
                     formatRupiah(widget.totalPrice),
-                    style: GoogleFonts.poppins(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFFD4AF37)),
+                    style: GoogleFonts.poppins(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFD4AF37),
+                    ),
                   ),
                   const Gap(8),
-                  Text("Untuk sewa: ${widget.motorName}", style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                  Text(
+                    "Untuk sewa: ${widget.motorName}",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -162,9 +201,11 @@ class _PaymentPageState extends State<PaymentPage> {
                   color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _selectedImage != null ? const Color(0xFFD4AF37) : Colors.white24, 
+                    color: _selectedImage != null
+                        ? const Color(0xFFD4AF37)
+                        : Colors.white24,
                     style: BorderStyle.solid,
-                    width: 1.5
+                    width: 1.5,
                   ),
                 ),
                 // Tampilkan gambar (Logic Web vs Mobile)
@@ -172,29 +213,51 @@ class _PaymentPageState extends State<PaymentPage> {
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: kIsWeb
-                            ? Image.network(_selectedImage!.path, fit: BoxFit.cover) // Web pakai network blob
-                            : Image.file(File(_selectedImage!.path), fit: BoxFit.cover), // HP pakai File path
+                            ? Image.network(
+                                _selectedImage!.path,
+                                fit: BoxFit.cover,
+                              ) // Web pakai network blob
+                            : Image.file(
+                                File(_selectedImage!.path),
+                                fit: BoxFit.cover,
+                              ), // HP pakai File path
                       )
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.cloud_upload_outlined, size: 50, color: Colors.white54),
+                          const Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 50,
+                            color: Colors.white54,
+                          ),
                           const Gap(10),
-                          Text("Tap untuk Upload Bukti", style: GoogleFonts.poppins(color: Colors.white70)),
-                          Text("(Transfer Bank / E-Wallet)", style: GoogleFonts.poppins(color: Colors.white24, fontSize: 12)),
+                          Text(
+                            "Tap untuk Upload Bukti",
+                            style: GoogleFonts.poppins(color: Colors.white70),
+                          ),
+                          Text(
+                            "(Transfer Bank / E-Wallet)",
+                            style: GoogleFonts.poppins(
+                              color: Colors.white24,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
               ),
             ),
-            
+
             // Tombol Ganti Foto (Muncul kalau sudah pilih foto)
             if (_selectedImage != null)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: TextButton.icon(
-                  onPressed: _pickImage, 
-                  icon: const Icon(Icons.refresh, color: Colors.white70), 
-                  label: const Text("Ganti Foto", style: TextStyle(color: Colors.white70))
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.refresh, color: Colors.white70),
+                  label: const Text(
+                    "Ganti Foto",
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ),
               ),
 
@@ -208,19 +271,42 @@ class _PaymentPageState extends State<PaymentPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFD4AF37),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   disabledBackgroundColor: Colors.grey.withOpacity(0.3),
                 ),
                 child: _isLoading
                     ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)),
+                          const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.black,
+                              strokeWidth: 2,
+                            ),
+                          ),
                           const Gap(10),
-                          Text("MENGUPLOAD...", style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black)),
+                          Text(
+                            "MENGUPLOAD...",
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
                         ],
                       )
-                    : Text("KIRIM BUKTI PEMBAYARAN", style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+                    : Text(
+                        "KIRIM BUKTI PEMBAYARAN",
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
               ),
             ),
           ],

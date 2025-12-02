@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ WAJIB
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:rentsoed_app/features/auth/login_page.dart';
@@ -9,16 +9,93 @@ import 'package:rentsoed_app/features/auth/login_page.dart';
 import 'package:rentsoed_app/features/admin/motors/manage_motors_page.dart';
 import 'package:rentsoed_app/features/admin/categories/manage_categories_page.dart';
 import 'package:rentsoed_app/features/admin/promos/manage_promos_page.dart';
-
-// FIX IMPORTS: Mengubah ':' menjadi '/'
 import 'package:rentsoed_app/features/admin/transactions/booking_detail_page.dart';
 import 'package:rentsoed_app/features/admin/transactions/manage_bookings_page.dart';
 import 'package:rentsoed_app/features/admin/reviews/manage_reviews_page.dart';
 
-class AdminDashboard extends StatelessWidget {
+// ✅ IMPORT SERVICE NOTIFIKASI
+import 'package:rentsoed_app/services/notification_service.dart';
+
+// ⚠️ UBAH JADI STATEFUL WIDGET AGAR BISA LISTEN REALTIME
+class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
-  // Fungsi Logout Admin
+  @override
+  State<AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends State<AdminDashboard> {
+  // ✅ Variable Subscription
+  RealtimeChannel? _adminSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Mulai Dengarkan Aktivitas Booking
+    _subscribeToAdminUpdates();
+  }
+
+  @override
+  void dispose() {
+    // ✅ Bersihkan Subscription
+    if (_adminSubscription != null) {
+      Supabase.instance.client.removeChannel(_adminSubscription!);
+    }
+    super.dispose();
+  }
+
+  // --- LOGIKA NOTIFIKASI ADMIN (REALTIME) ---
+  void _subscribeToAdminUpdates() {
+    final supabase = Supabase.instance.client;
+
+    _adminSubscription = supabase
+        .channel('public:bookings:admin_listener')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all, // Dengarkan INSERT dan UPDATE
+          schema: 'public',
+          table: 'bookings',
+          callback: (payload) {
+            _handleAdminNotification(payload);
+          },
+        )
+        .subscribe();
+  }
+
+  void _handleAdminNotification(PostgresChangePayload payload) {
+    // 1. KASUS: BOOKING BARU (INSERT)
+    if (payload.eventType == PostgresChangeEvent.insert) {
+      final newData = payload.newRecord;
+      final bookingId = newData['id'].toString().substring(0, 5).toUpperCase();
+      final motorName = newData['motor_name'] ?? 'Motor';
+
+      NotificationService.showNotification(
+        title: 'Booking Baru Masuk! 🔔',
+        body: '#$bookingId: Customer menyewa $motorName. Cek sekarang!',
+      );
+    }
+
+    // 2. KASUS: UPDATE STATUS (PEMBAYARAN MASUK)
+    if (payload.eventType == PostgresChangeEvent.update) {
+      final newData = payload.newRecord;
+      final oldData = payload.oldRecord;
+
+      // Cek jika status berubah menjadi 'Menunggu Verifikasi'
+      // Artinya user baru saja upload bukti bayar
+      if (newData['status'] == 'Menunggu Verifikasi' &&
+          oldData['status'] != 'Menunggu Verifikasi') {
+        final bookingId = newData['id']
+            .toString()
+            .substring(0, 5)
+            .toUpperCase();
+
+        NotificationService.showNotification(
+          title: 'Pembayaran Diterima! 💰',
+          body: 'Booking #$bookingId menunggu verifikasi Anda.',
+        );
+      }
+    }
+  }
+
   void _logout(BuildContext context) async {
     await Supabase.instance.client.auth.signOut();
     if (context.mounted) {
@@ -37,10 +114,8 @@ class AdminDashboard extends StatelessWidget {
         'Admin';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Background Navy
-      // ✅ FIX: Menghapus drawer karena Admin tidak menggunakannya
+      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        // ✅ FIX: Menghilangkan otomatis tombol back/drawer
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
@@ -98,7 +173,6 @@ class AdminDashboard extends StatelessWidget {
                 mainAxisSpacing: 16,
                 childAspectRatio: 1.5,
                 children: [
-                  // 1. Kelola Motor
                   _buildMenuCard(
                     context,
                     icon: Icons.motorcycle,
@@ -111,7 +185,6 @@ class AdminDashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 2. Kelola Kategori
                   _buildMenuCard(
                     context,
                     icon: Icons.category,
@@ -124,7 +197,6 @@ class AdminDashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 3. Kelola Promo
                   _buildMenuCard(
                     context,
                     icon: Icons.local_offer,
@@ -137,7 +209,6 @@ class AdminDashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 4. Kelola Transaksi (Verifikasi Pembayaran)
                   _buildMenuCard(
                     context,
                     icon: Icons.receipt_long,
@@ -150,7 +221,6 @@ class AdminDashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 5. Kelola Review
                   _buildMenuCard(
                     context,
                     icon: Icons.star_half,
@@ -163,7 +233,6 @@ class AdminDashboard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 6. Laporan (Menggantikan Verifikasi Dokumen)
                   _buildMenuCard(
                     context,
                     icon: Icons.analytics,
@@ -198,10 +267,11 @@ class AdminDashboard extends StatelessWidget {
 
               // --- LIST TRANSAKSI PENDING (REALTIME) ---
               StreamBuilder<List<Map<String, dynamic>>>(
+                // Mengambil semua data untuk filter manual client-side agar lebih stabil
                 stream: Supabase.instance.client
                     .from('bookings')
                     .stream(primaryKey: ['id'])
-                    .eq('status', 'Menunggu Pembayaran'),
+                    .order('created_at', ascending: false),
 
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -214,34 +284,34 @@ class AdminDashboard extends StatelessWidget {
 
                   final allBookings = snapshot.data ?? [];
 
-                  // FILTER hanya yang punya bukti pembayaran
-                  final bookings = allBookings
-                      .where((b) => b['payment_proof_url'] != null)
-                      .toList();
-
-                  // SORTING berdasarkan created_at (manual)
-                  bookings.sort((a, b) {
-                    final aTime = DateTime.parse(a['created_at']);
-                    final bTime = DateTime.parse(b['created_at']);
-                    return aTime.compareTo(bTime);
-                  });
+                  // Filter Manual: Status 'Menunggu Pembayaran' (dan opsional cek payment_proof)
+                  // Di sini kita tampilkan semua yang Menunggu Pembayaran agar admin tau ada order masuk
+                  // Walaupun user belum upload bukti
+                  final bookings = allBookings.where((b) {
+                    return b['status'] == 'Menunggu Pembayaran' ||
+                        b['status'] == 'Menunggu Verifikasi';
+                  }).toList();
 
                   if (bookings.isEmpty) {
                     return Container(
                       height: 100,
                       width: double.infinity,
                       alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(
-                            Icons.waving_hand,
+                            Icons.check_circle_outline,
                             size: 40,
                             color: Colors.white24,
                           ),
                           const Gap(10),
                           Text(
-                            "Tidak ada pembayaran menunggu verifikasi.",
+                            "Tidak ada pembayaran pending.",
                             style: GoogleFonts.poppins(color: Colors.white30),
                           ),
                         ],
@@ -262,6 +332,10 @@ class AdminDashboard extends StatelessWidget {
                         decimalDigits: 0,
                       ).format(booking['total_price'] ?? 0);
 
+                      final bool hasProof =
+                          booking['payment_proof_url'] != null;
+                      final String status = booking['status'] ?? '';
+
                       return ListTile(
                         onTap: () {
                           Navigator.push(
@@ -279,35 +353,66 @@ class AdminDashboard extends StatelessWidget {
                         tileColor: const Color(0xFF1E293B),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(
-                            color: Colors.redAccent,
-                            width: 1.5,
+                          side: BorderSide(
+                            color: hasProof
+                                ? const Color(0xFFD4AF37)
+                                : Colors.redAccent.withOpacity(0.5),
+                            width: 1.0,
                           ),
                         ),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.redAccent.withOpacity(0.2),
+                            color: hasProof
+                                ? const Color(0xFFD4AF37).withOpacity(0.2)
+                                : Colors.redAccent.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.payment,
-                            color: Colors.redAccent,
+                          child: Icon(
+                            hasProof ? Icons.receipt_long : Icons.pending,
+                            color: hasProof
+                                ? const Color(0xFFD4AF37)
+                                : Colors.redAccent,
                           ),
                         ),
                         title: Text(
-                          '#${booking['id'].toString().substring(0, 8)} - ${booking['motor_name'] ?? 'Pemesanan'}',
+                          '#${booking['id'].toString().substring(0, 8).toUpperCase()} - ${booking['motor_name'] ?? 'Motor'}',
                           style: GoogleFonts.poppins(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text(
-                          priceFormatted,
-                          style: GoogleFonts.poppins(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              priceFormatted,
+                              style: GoogleFonts.poppins(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if (!hasProof)
+                              Text(
+                                "Belum upload bukti transfer",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.redAccent,
+                                  fontSize: 10,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              )
+                            else if (status == 'Menunggu Verifikasi')
+                              Text(
+                                "Bukti terupload! Perlu verifikasi.",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.greenAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                          ],
                         ),
                         trailing: const Icon(
                           Icons.chevron_right,
@@ -318,6 +423,7 @@ class AdminDashboard extends StatelessWidget {
                   );
                 },
               ),
+
               const Gap(30),
             ],
           ),
@@ -326,7 +432,6 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
-  // Widget Pembantu untuk Kartu Menu
   Widget _buildMenuCard(
     BuildContext context, {
     required IconData icon,
